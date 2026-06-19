@@ -113,6 +113,21 @@
   <h2><span class="step-n">2</span>The Model <span class="pill">your brand face</span></h2>
   <div class="card">
     <div id="savedModelBox"></div>
+    <div class="chips" id="modeToggle" style="margin-bottom:14px">
+      <div class="chip on" data-mode="generate">✨ Generate a model</div>
+      <div class="chip" data-mode="upload">📷 Upload my own</div>
+    </div>
+
+    <!-- UPLOAD-OWN-MODEL panel -->
+    <div id="uploadModelPanel" class="hidden">
+      <div class="up" id="modelUp">📷 Tap to upload a model photo<br><small style="color:var(--muted)">a clear full-body or upper-body photo of the person — yourself, a friend, anyone</small></div>
+      <input type="file" id="modelFile" accept="image/*" class="hidden">
+      <div class="thumbs" id="modelThumb"></div>
+      <div class="hint">We'll dress <b>this exact person</b> in your clothing — real face, real body. Best results: clear photo, facing forward, plain clothes.</div>
+    </div>
+
+    <!-- GENERATE-A-MODEL panel -->
+    <div id="generateModelPanel">
     <div class="grp">
       <label class="lab">Gender</label>
       <div class="chips" data-pick="gender">
@@ -153,6 +168,7 @@
       <button class="btn ghost sm" id="genModelBtn">👤 Preview Model</button>
       <button class="btn ok sm" id="saveModelBtn" disabled>💾 Save as Brand Face</button>
     </div>
+    </div><!-- /generateModelPanel -->
     <div id="modelArea"></div>
   </div>
 
@@ -212,6 +228,7 @@
 const BACKEND = localStorage.getItem('threadgen_backend') || 'https://threadgen-server.onrender.com';
 const state = {
   product:null, category:'auto',
+  modelMode:'generate', uploadedModel:null,
   model:{gender:'man',build:'athletic',ethnicity:'black',age:'young adult'},
   savedModel: JSON.parse(localStorage.getItem('threadgen_brandmodel')||'null'),
   scene:'', styles:new Set(), approvedBlob:null
@@ -271,6 +288,25 @@ $('prodFile').onchange=e=>{
   state.product=f;
   $('prodUp').classList.add('has'); $('prodUp').innerHTML='✅ Product loaded — tap to change';
   $('prodThumb').innerHTML=`<img class="thumb" src="${fileToThumb(f)}">`;
+};
+
+// ---------- model mode toggle (generate vs upload your own) ----------
+document.querySelectorAll('#modeToggle .chip').forEach(c=>{
+  c.onclick=()=>{
+    document.querySelectorAll('#modeToggle .chip').forEach(x=>x.classList.remove('on'));
+    c.classList.add('on');
+    state.modelMode=c.dataset.mode;
+    const up=state.modelMode==='upload';
+    $('uploadModelPanel').classList.toggle('hidden',!up);
+    $('generateModelPanel').classList.toggle('hidden',up);
+  };
+});
+$('modelUp').onclick=()=>$('modelFile').click();
+$('modelFile').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  state.uploadedModel=f;
+  $('modelUp').classList.add('has'); $('modelUp').innerHTML='✅ Model photo loaded — tap to change';
+  $('modelThumb').innerHTML=`<img class="thumb" src="${fileToThumb(f)}">`;
 };
 
 // ---------- saved brand model ----------
@@ -344,7 +380,10 @@ $('testBtn').onclick=async ()=>{
   try{
     const fd=new FormData();
     fd.append('product',state.product);
-    if(state.savedModel&&state.savedModel.image){
+    // Model priority: uploaded-this-session > saved brand face > generated from picker
+    if(state.modelMode==='upload' && state.uploadedModel){
+      fd.append('modelImg', state.uploadedModel, 'model.png');
+    } else if(state.savedModel&&state.savedModel.image){
       fd.append('modelImg', await urlToBlob(state.savedModel.image),'model.png');
     }
     fd.append('options',JSON.stringify(options()));
