@@ -83,6 +83,10 @@
   .crops{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   .crops a{flex:1;text-align:center;background:var(--elev);color:var(--txt);font-size:12px;font-weight:700;
     padding:9px 6px;border-radius:10px;text-decoration:none;border:1px solid var(--line)}
+  .galgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .galgrid a{display:block;position:relative}
+  .galgrid img{width:100%;aspect-ratio:3/4;object-fit:cover;border-radius:8px;border:1px solid var(--line);display:block}
+  .galempty{grid-column:1/-1;text-align:center;color:var(--muted);font-size:13px;padding:24px 0}
 </style>
 </head>
 <body>
@@ -217,6 +221,14 @@
       <button class="btn ok" id="campBtn" style="margin-top:12px">🎬 Generate 5-Photo Campaign</button>
       <div id="campArea"></div>
     </div>
+  </div>
+
+  <!-- GALLERY -->
+  <h2><span class="step-n">★</span>Gallery <span class="pill" id="galCount">0 / 50</span></h2>
+  <div class="card">
+    <div class="galgrid" id="galGrid"></div>
+    <div class="hint" id="galCaption">Every photo you generate is saved here automatically — so you can see how often the AI nails it. Holds the last <b>50</b>; when it's full, the oldest photo drops off to make room. Tap any photo to save it to your phone. Stored on this device only.</div>
+    <button class="btn ghost sm" id="galClearBtn" style="margin-top:12px">🗑️ Clear Gallery</button>
   </div>
 
   <div class="setup" id="setupNote"></div>
@@ -371,6 +383,42 @@ async function makeCrops(imgUrl, container){
   container.innerHTML=`<div class="crops">${links.join('')}</div>`;
 }
 
+// ---------- GALLERY (auto-saves every generated pic, 50 max, oldest drops off) ----------
+const GAL_KEY='threadgen_gallery', GAL_MAX=50;
+function galLoad(){ try{ return JSON.parse(localStorage.getItem(GAL_KEY)||'[]'); }catch{ return []; } }
+function galSave(arr){ try{ localStorage.setItem(GAL_KEY, JSON.stringify(arr)); }catch(e){
+  // storage full — drop more until it fits
+  while(arr.length>5){ arr.shift(); try{ localStorage.setItem(GAL_KEY,JSON.stringify(arr)); return; }catch{} }
+}}
+// downscale a remote image to a compact thumbnail data-URL so 50 fit in phone storage
+async function toThumb(imgUrl){
+  const img=new Image(); img.crossOrigin='anonymous';
+  await new Promise((res,rej)=>{img.onload=res;img.onerror=rej;img.src=imgUrl;});
+  const W=420, H=Math.round(W*img.height/img.width);
+  const cv=$('cropCanvas'); cv.width=W; cv.height=H;
+  cv.getContext('2d').drawImage(img,0,0,W,H);
+  return cv.toDataURL('image/jpeg',0.72);
+}
+async function galAdd(imgUrl){
+  try{
+    const thumb=await toThumb(imgUrl);
+    const arr=galLoad();
+    arr.push({t:thumb, ts:Date.now()});
+    while(arr.length>GAL_MAX) arr.shift(); // FIFO: oldest drops off
+    galSave(arr); galRender();
+  }catch{}
+}
+function galRender(){
+  const arr=galLoad(), grid=$('galGrid');
+  $('galCount').textContent=`${arr.length} / ${GAL_MAX}`;
+  if(!arr.length){ grid.innerHTML='<div class="galempty">No photos yet — generate a shot and it shows up here.</div>'; return; }
+  // newest first
+  grid.innerHTML=arr.slice().reverse().map((g,i)=>
+    `<a href="${g.t}" download="threadgen_${arr.length-i}.jpg"><img src="${g.t}" loading="lazy"></a>`).join('');
+}
+$('galClearBtn').onclick=()=>{ if(confirm('Clear all saved photos? This can\'t be undone.')){ localStorage.removeItem(GAL_KEY); galRender(); } };
+galRender();
+
 // ---------- TEST PHOTO ----------
 $('testBtn').onclick=async ()=>{
   if(!state.product){ alert('Upload your product photo first (Step 1).'); return; }
@@ -390,6 +438,7 @@ $('testBtn').onclick=async ()=>{
     const r=await fetch(BACKEND+'/api/test-photo',{method:'POST',body:fd});
     const j=await r.json(); if(!j.success) throw new Error(j.error||'generation failed');
     state.approvedBlob=await urlToBlob(j.image);
+    galAdd(j.image); // auto-save to gallery
     area.innerHTML=`<div class="result"><img src="${j.image}" id="testImg"></div>
       <div class="crops" id="testCrops"></div>
       <div class="gate"><div style="font-weight:700;margin-bottom:10px">Happy with this look?</div>
@@ -418,6 +467,7 @@ document.addEventListener('click',async ev=>{
     fd.append('options',JSON.stringify(options()));
     const r=await fetch(BACKEND+'/api/campaign',{method:'POST',body:fd});
     const j=await r.json(); if(!j.success) throw new Error(j.error||'campaign failed');
+    for(const u of j.images){ await galAdd(u); } // auto-save all 5 to gallery
     area.innerHTML='<div class="grid">'+j.images.map((u,i)=>`
       <div><img src="${u}"><a class="dl" href="${u}" download="campaign_${i+1}.png" target="_blank">⬇ save</a></div>`).join('')+'</div>';
   }catch(e){ area.innerHTML=`<div class="err">⚠️ ${e.message}</div>`; }
