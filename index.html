@@ -203,6 +203,17 @@
   <h2><span class="step-n">4</span>Editing Style <span class="pill">combine any</span></h2>
   <div class="card">
     <div class="chips" id="styleChips"></div>
+    <div class="grp" style="margin-top:14px">
+      <label class="lab">Custom style prompt</label>
+      <textarea id="styleBox" rows="3" placeholder="e.g. moody 35mm film grain, golden-hour backlight, muted earth tones, slight halation" style="width:100%;background:var(--card2,#1a1a1a);color:var(--txt,#fff);border:1px solid var(--bd,#333);border-radius:10px;padding:10px;font-size:14px;resize:vertical"></textarea>
+      <div class="row" style="margin-top:10px;gap:8px">
+        <select id="promptPick" style="flex:1;background:var(--card2,#1a1a1a);color:var(--txt,#fff);border:1px solid var(--bd,#333);border-radius:10px;padding:10px;font-size:14px">
+          <option value="">📚 Prompt gallery — load a saved prompt…</option>
+        </select>
+        <button class="btn ok sm" id="savePromptBtn" style="width:auto;margin:0;padding:10px 14px;white-space:nowrap">💾 Save</button>
+      </div>
+      <div class="hint" id="promptGalHint" style="margin-top:8px">Save prompts that work, reuse them anytime. The built-in style presets are loaded in too.</div>
+    </div>
   </div>
 
   <!-- STEP 5: POSE -->
@@ -282,9 +293,13 @@ async function urlToBlob(u){ const r=await fetch(u); return await r.blob(); }
 // ---------- styles ----------
 const STYLE_LABELS = {iphone:'📱 iPhone',vintage:'🎞️ Vintage',streetwear:'🧥 Streetwear',
   urban:'🏙️ Urban',grainy:'⚫ Grainy',clear:'✨ Clear',studio:'📸 Studio'};
+let STYLE_RECIPES = {}; // filled from /api/styles — full prompt text behind each preset
 (async ()=>{
   let styles = Object.keys(STYLE_LABELS);
-  try{ const r=await fetch(BACKEND+'/api/styles'); const j=await r.json(); if(j.styles) styles=j.styles; }catch{}
+  try{ const r=await fetch(BACKEND+'/api/styles'); const j=await r.json();
+    if(j.styles) styles=j.styles;
+    if(j.recipes) STYLE_RECIPES=j.recipes;
+  }catch{}
   const box=$('styleChips');
   styles.forEach(s=>{
     const c=document.createElement('div');
@@ -292,7 +307,48 @@ const STYLE_LABELS = {iphone:'📱 iPhone',vintage:'🎞️ Vintage',streetwear:
     c.onclick=()=>{ c.classList.toggle('on'); c.classList.contains('on')?state.styles.add(s):state.styles.delete(s); };
     box.appendChild(c);
   });
+  buildPromptGallery();
 })();
+
+// ---------- PROMPT GALLERY (Section 4): save/reuse custom style prompts ----------
+const PROMPT_KEY='threadgen_prompts';
+function loadPrompts(){ try{ return JSON.parse(localStorage.getItem(PROMPT_KEY)||'[]'); }catch{ return []; } }
+function savePrompts(arr){ try{ localStorage.setItem(PROMPT_KEY, JSON.stringify(arr)); }catch{} }
+function buildPromptGallery(){
+  const sel=$('promptPick'); if(!sel) return;
+  sel.innerHTML='<option value="">📚 Prompt gallery — load a saved prompt…</option>';
+  // group 1: built-in style preset recipes
+  const presetKeys=Object.keys(STYLE_RECIPES);
+  if(presetKeys.length){
+    const og=document.createElement('optgroup'); og.label='Built-in presets';
+    presetKeys.forEach(k=>{
+      const o=document.createElement('option'); o.value='preset:'+k;
+      o.textContent=(STYLE_LABELS[k]||k).replace(/^[^ ]+ /,''); og.appendChild(o);
+    });
+    sel.appendChild(og);
+  }
+  // group 2: user-saved prompts
+  const saved=loadPrompts();
+  if(saved.length){
+    const og=document.createElement('optgroup'); og.label='My saved prompts';
+    saved.forEach((p,i)=>{ const o=document.createElement('option'); o.value='saved:'+i; o.textContent=p.name; og.appendChild(o); });
+    sel.appendChild(og);
+  }
+}
+function setStyleBox(t){ const b=$('styleBox'); if(b){ b.value=t; } }
+if($('promptPick')) $('promptPick').onchange=function(){
+  const v=this.value; if(!v) return;
+  if(v.startsWith('preset:')) setStyleBox(STYLE_RECIPES[v.slice(7)]||'');
+  else if(v.startsWith('saved:')){ const p=loadPrompts()[+v.slice(6)]; if(p) setStyleBox(p.text); }
+  this.value='';
+};
+if($('savePromptBtn')) $('savePromptBtn').onclick=()=>{
+  const text=($('styleBox')?$('styleBox').value.trim():''); if(!text){ alert('Type a style prompt first.'); return; }
+  const name=prompt('Name this prompt:', text.slice(0,40)); if(!name) return;
+  const arr=loadPrompts(); arr.unshift({name:name.trim(), text, ts:Date.now()});
+  savePrompts(arr); buildPromptGallery();
+  $('promptGalHint').textContent='✅ Saved "'+name.trim()+'" to your prompt gallery.';
+};
 
 // ---------- single-select chip groups (model picker / scene) ----------
 document.querySelectorAll('[data-pick]').forEach(grp=>{
@@ -420,6 +476,7 @@ $('saveModelBtn').onclick=()=>{
 function options(){
   return { model:{...state.model, ...(state.savedModel?{seed:state.savedModel.seed}:{})},
     scene:state.scene, styles:[...state.styles], category:state.category,
+    customStyle:($('styleBox')?$('styleBox').value.trim():''),
     productDesc:($('prodDesc')?$('prodDesc').value.trim():''),
     refWhat:[...state.refWhat],
     pose:$('poseBox').value.trim(), campaignVision:$('campBox')?$('campBox').value.trim():'' };
