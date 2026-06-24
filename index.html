@@ -244,10 +244,10 @@
   <div id="lightbox" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.94);flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box">
     <img id="lbImg" style="max-width:100%;max-height:78vh;border-radius:10px;object-fit:contain">
     <div style="display:flex;gap:12px;margin-top:16px">
-      <a id="lbSave" href="#" target="_blank" rel="noopener" style="background:#16a34a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:700;font-size:15px">⬇ Save full-res</a>
+      <a id="lbSave" href="javascript:void(0)" style="background:#16a34a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:700;font-size:15px">⬇ Save full-res</a>
       <button id="lbClose" style="background:#333;color:#fff;border:none;padding:12px 22px;border-radius:10px;font-weight:700;font-size:15px">✕ Close</button>
     </div>
-    <div style="color:#888;font-size:12px;margin-top:12px;text-align:center;max-width:320px">Tap “Save full-res”, then long-press the image and choose “Save image”.</div>
+    <div style="color:#888;font-size:12px;margin-top:12px;text-align:center;max-width:320px">Tap “Save full-res” → choose “Save Image” in the share menu to send it to your camera roll.</div>
   </div>
 
   <div class="setup" id="setupNote"></div>
@@ -482,12 +482,41 @@ function galRender(){
   });
 }
 // ---------- lightbox (full-res viewer) ----------
+let lbUrl=null;
 function openLightbox(url){
-  $('lbImg').src=url; $('lbSave').href=url;
+  lbUrl=url; $('lbImg').src=url;
+  $('lbSave').textContent='⬇ Save full-res';
   $('lightbox').style.display='flex';
 }
 $('lbClose').onclick=()=>{ $('lightbox').style.display='none'; $('lbImg').src=''; };
 $('lightbox').onclick=ev=>{ if(ev.target.id==='lightbox'){ $('lightbox').style.display='none'; $('lbImg').src=''; } };
+// Cross-origin <a download> is ignored on phones (it just navigates to the home page).
+// Fix: fetch the image as a blob, then use the native Share sheet (gives "Save Image" ->
+// camera roll on iOS/Android). Fall back to a blob download on desktop.
+$('lbSave').onclick=async ev=>{
+  ev.preventDefault();
+  if(!lbUrl) return;
+  const btn=$('lbSave'); const orig=btn.textContent; btn.textContent='Saving…';
+  try{
+    const resp=await fetch(lbUrl,{mode:'cors'});
+    const blob=await resp.blob();
+    const file=new File([blob],`threadgen_${Date.now()}.png`,{type:blob.type||'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      await navigator.share({files:[file], title:'ThreadGen photo'});
+      btn.textContent=orig; return;
+    }
+    // desktop / no-share fallback: real blob download
+    const u=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=u; a.download=file.name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),4000);
+    btn.textContent=orig;
+  }catch(e){
+    // last resort: open the raw image so user can long-press -> Save Image
+    btn.textContent=orig;
+    window.open(lbUrl,'_blank','noopener');
+  }
+};
 $('galClearBtn').onclick=()=>{ if(confirm('Clear all saved photos? This can\'t be undone.')){ localStorage.removeItem(GAL_KEY); galRender(); } };
 galRender();
 
