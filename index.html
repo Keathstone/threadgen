@@ -451,6 +451,29 @@ function galSave(arr){ try{ localStorage.setItem(GAL_KEY, JSON.stringify(arr)); 
   // storage full — drop more until it fits
   while(arr.length>5){ arr.shift(); try{ localStorage.setItem(GAL_KEY,JSON.stringify(arr)); return; }catch{} }
 }}
+
+// ---------- full-res blob store (IndexedDB) ----------
+// localStorage can't hold 50 full-res images, and fal.media URLs expire — so we keep the
+// actual full-resolution image bytes ON-DEVICE in IndexedDB, keyed by the gallery item id.
+// This guarantees "Save full-res" always has the real high-res file, even days later/offline.
+const IDB_NAME='threadgen_fullres', IDB_STORE='imgs';
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    const r=indexedDB.open(IDB_NAME,1);
+    r.onupgradeneeded=()=>{ r.result.createObjectStore(IDB_STORE); };
+    r.onsuccess=()=>res(r.result); r.onerror=()=>rej(r.error);
+  });
+}
+async function idbPut(id,blob){ try{ const db=await idbOpen();
+  await new Promise((res,rej)=>{ const tx=db.transaction(IDB_STORE,'readwrite');
+    tx.objectStore(IDB_STORE).put(blob,id); tx.oncomplete=res; tx.onerror=()=>rej(tx.error); }); }catch{} }
+async function idbGet(id){ try{ const db=await idbOpen();
+  return await new Promise((res,rej)=>{ const tx=db.transaction(IDB_STORE,'readonly');
+    const g=tx.objectStore(IDB_STORE).get(id); g.onsuccess=()=>res(g.result||null); g.onerror=()=>rej(g.error); }); }catch{ return null; } }
+async function idbDel(id){ try{ const db=await idbOpen();
+  await new Promise((res)=>{ const tx=db.transaction(IDB_STORE,'readwrite');
+    tx.objectStore(IDB_STORE).delete(id); tx.oncomplete=res; tx.onerror=res; }); }catch{} }
+
 // downscale a remote image to a compact thumbnail data-URL so 50 fit in phone storage
 async function toThumb(imgUrl){
   const img=new Image(); img.crossOrigin='anonymous';
@@ -462,11 +485,14 @@ async function toThumb(imgUrl){
 }
 async function galAdd(imgUrl){
   try{
+    const id='g'+Date.now()+Math.random().toString(36).slice(2,7);
     const thumb=await toThumb(imgUrl);
+    // fetch + store the REAL full-res bytes on-device (survives URL expiry)
+    try{ const blob=await (await fetch(imgUrl,{mode:'cors'})).blob(); await idbPut(id,blob); }catch{}
     const arr=galLoad();
-    // store BOTH: t = small thumbnail for the grid, u = full-res original URL for view/download
-    arr.push({t:thumb, u:imgUrl, ts:Date.now()});
-    while(arr.length>GAL_MAX) arr.shift(); // FIFO: oldest drops off
+    // t = small thumbnail (grid), u = original URL (fallback), id = full-res blob key in IDB
+    arr.push({id, t:thumb, u:imgUrl, ts:Date.now()});
+    while(arr.length>GAL_MAX){ const old=arr.shift(); if(old && old.id) idbDel(old.id); } // FIFO + cleanup
     galSave(arr); galRender();
   }catch{}
 }
@@ -476,48 +502,54 @@ function galRender(){
   if(!arr.length){ grid.innerHTML='<div class="galempty">No photos yet — generate a shot and it shows up here.</div>'; return; }
   // newest first. Tap a thumb -> opens full-res in the in-app lightbox.
   grid.innerHTML=arr.slice().reverse().map((g,i)=>
-    `<a href="#" data-full="${g.u||g.t}"><img src="${g.t}" loading="lazy"></a>`).join('');
+    `<a href="#" data-id="${g.id||''}" data-full="${g.u||g.t}"><img src="${g.t}" loading="lazy"></a>`).join('');
   grid.querySelectorAll('a[data-full]').forEach(a=>{
-    a.onclick=ev=>{ ev.preventDefault(); openLightbox(a.dataset.full); };
+    a.onclick=ev=>{ ev.preventDefault(); openLightbox(a.dataset.full, a.dataset.id); };
   });
 }
 // ---------- lightbox (full-res viewer) ----------
-let lbUrl=null;
-function openLightbox(url){
-  lbUrl=url; $('lbImg').src=url;
+let lbUrl=null, lbId=null, lbObjUrl=null;
+async function openLightbox(url, id){
+  lbUrl=url; lbId=id||null;
+  if(lbObjUrl){ URL.revokeObjectURL(lbObjUrl); lbObjUrl=null; }
   $('lbSave').textContent='⬇ Save full-res';
   $('lightbox').style.display='flex';
+  // prefer the on-device full-res blob; fall back to the remote URL
+  let shown=url;
+  if(id){ const blob=await idbGet(id); if(blob){ lbObjUrl=URL.createObjectURL(blob); shown=lbObjUrl; } }
+  $('lbImg').src=shown;
 }
-$('lbClose').onclick=()=>{ $('lightbox').style.display='none'; $('lbImg').src=''; };
-$('lightbox').onclick=ev=>{ if(ev.target.id==='lightbox'){ $('lightbox').style.display='none'; $('lbImg').src=''; } };
-// Cross-origin <a download> is ignored on phones (it just navigates to the home page).
-// Fix: fetch the image as a blob, then use the native Share sheet (gives "Save Image" ->
-// camera roll on iOS/Android). Fall back to a blob download on desktop.
+function lbCleanup(){ $('lightbox').style.display='none'; $('lbImg').src='';
+  if(lbObjUrl){ URL.revokeObjectURL(lbObjUrl); lbObjUrl=null; } }
+$('lbClose').onclick=lbCleanup;
+$('lightbox').onclick=ev=>{ if(ev.target.id==='lightbox') lbCleanup(); };
+// Save: pull the full-res blob (IDB first, then network), then native Share sheet -> camera roll.
 $('lbSave').onclick=async ev=>{
   ev.preventDefault();
-  if(!lbUrl) return;
   const btn=$('lbSave'); const orig=btn.textContent; btn.textContent='Saving…';
   try{
-    const resp=await fetch(lbUrl,{mode:'cors'});
-    const blob=await resp.blob();
+    let blob=null;
+    if(lbId) blob=await idbGet(lbId);
+    if(!blob && lbUrl) blob=await (await fetch(lbUrl,{mode:'cors'})).blob();
+    if(!blob) throw new Error('no image');
     const file=new File([blob],`threadgen_${Date.now()}.png`,{type:blob.type||'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
       await navigator.share({files:[file], title:'ThreadGen photo'});
       btn.textContent=orig; return;
     }
-    // desktop / no-share fallback: real blob download
     const u=URL.createObjectURL(blob);
     const a=document.createElement('a'); a.href=u; a.download=file.name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(u),4000);
     btn.textContent=orig;
   }catch(e){
-    // last resort: open the raw image so user can long-press -> Save Image
     btn.textContent=orig;
-    window.open(lbUrl,'_blank','noopener');
+    if(lbUrl) window.open(lbUrl,'_blank','noopener');
   }
 };
-$('galClearBtn').onclick=()=>{ if(confirm('Clear all saved photos? This can\'t be undone.')){ localStorage.removeItem(GAL_KEY); galRender(); } };
+$('galClearBtn').onclick=async ()=>{ if(confirm('Clear all saved photos? This can\'t be undone.')){
+  const arr=galLoad(); for(const g of arr){ if(g.id) await idbDel(g.id); }
+  localStorage.removeItem(GAL_KEY); galRender(); } };
 galRender();
 
 // ---------- TEST PHOTO ----------
