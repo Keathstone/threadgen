@@ -236,8 +236,18 @@
   <h2><span class="step-n">★</span>Gallery <span class="pill" id="galCount">0 / 50</span></h2>
   <div class="card">
     <div class="galgrid" id="galGrid"></div>
-    <div class="hint" id="galCaption">Every photo you generate is saved here automatically — so you can see how often the AI nails it. Holds the last <b>50</b>; when it's full, the oldest photo drops off to make room. Tap any photo to save it to your phone. Stored on this device only.</div>
+    <div class="hint" id="galCaption">Every photo you generate is saved here automatically — so you can see how often the AI nails it. Holds the last <b>50</b>; when it's full, the oldest photo drops off to make room. Tap any photo to open it full-size, then Save. Stored on this device only.</div>
     <button class="btn ghost sm" id="galClearBtn" style="margin-top:12px">🗑️ Clear Gallery</button>
+  </div>
+
+  <!-- LIGHTBOX (full-res viewer) -->
+  <div id="lightbox" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.94);flex-direction:column;align-items:center;justify-content:center;padding:16px;box-sizing:border-box">
+    <img id="lbImg" style="max-width:100%;max-height:78vh;border-radius:10px;object-fit:contain">
+    <div style="display:flex;gap:12px;margin-top:16px">
+      <a id="lbSave" href="#" target="_blank" rel="noopener" style="background:#16a34a;color:#fff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:700;font-size:15px">⬇ Save full-res</a>
+      <button id="lbClose" style="background:#333;color:#fff;border:none;padding:12px 22px;border-radius:10px;font-weight:700;font-size:15px">✕ Close</button>
+    </div>
+    <div style="color:#888;font-size:12px;margin-top:12px;text-align:center;max-width:320px">Tap “Save full-res”, then long-press the image and choose “Save image”.</div>
   </div>
 
   <div class="setup" id="setupNote"></div>
@@ -454,7 +464,8 @@ async function galAdd(imgUrl){
   try{
     const thumb=await toThumb(imgUrl);
     const arr=galLoad();
-    arr.push({t:thumb, ts:Date.now()});
+    // store BOTH: t = small thumbnail for the grid, u = full-res original URL for view/download
+    arr.push({t:thumb, u:imgUrl, ts:Date.now()});
     while(arr.length>GAL_MAX) arr.shift(); // FIFO: oldest drops off
     galSave(arr); galRender();
   }catch{}
@@ -463,10 +474,20 @@ function galRender(){
   const arr=galLoad(), grid=$('galGrid');
   $('galCount').textContent=`${arr.length} / ${GAL_MAX}`;
   if(!arr.length){ grid.innerHTML='<div class="galempty">No photos yet — generate a shot and it shows up here.</div>'; return; }
-  // newest first
+  // newest first. Tap a thumb -> opens full-res in the in-app lightbox.
   grid.innerHTML=arr.slice().reverse().map((g,i)=>
-    `<a href="${g.t}" download="threadgen_${arr.length-i}.jpg"><img src="${g.t}" loading="lazy"></a>`).join('');
+    `<a href="#" data-full="${g.u||g.t}"><img src="${g.t}" loading="lazy"></a>`).join('');
+  grid.querySelectorAll('a[data-full]').forEach(a=>{
+    a.onclick=ev=>{ ev.preventDefault(); openLightbox(a.dataset.full); };
+  });
 }
+// ---------- lightbox (full-res viewer) ----------
+function openLightbox(url){
+  $('lbImg').src=url; $('lbSave').href=url;
+  $('lightbox').style.display='flex';
+}
+$('lbClose').onclick=()=>{ $('lightbox').style.display='none'; $('lbImg').src=''; };
+$('lightbox').onclick=ev=>{ if(ev.target.id==='lightbox'){ $('lightbox').style.display='none'; $('lbImg').src=''; } };
 $('galClearBtn').onclick=()=>{ if(confirm('Clear all saved photos? This can\'t be undone.')){ localStorage.removeItem(GAL_KEY); galRender(); } };
 galRender();
 
