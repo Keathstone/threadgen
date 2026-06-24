@@ -99,18 +99,16 @@
 <div class="wrap">
 
   <!-- STEP 1: PRODUCT -->
-  <h2><span class="step-n">1</span>Product Photo</h2>
+  <h2><span class="step-n">1</span>Product Photos</h2>
   <div class="card">
-    <div class="up" id="prodUp">📦 Tap to upload your clothing item<br><small style="color:var(--muted)">a real flat-lay or hanger photo works best — tee, hoodie, jacket</small></div>
-    <input type="file" id="prodFile" accept="image/*" class="hidden">
+    <div class="up" id="prodUp">📦 Tap to add photos of your item<br><small style="color:var(--muted)">add up to 4 — front, back, sleeve, close-up of the print/patch. More angles = more accurate.</small></div>
+    <input type="file" id="prodFile" accept="image/*" multiple class="hidden">
     <div class="thumbs" id="prodThumb"></div>
-    <div class="chips" id="catChips" style="margin-top:12px">
-      <div class="chip on" data-cat="auto">auto-detect</div>
-      <div class="chip" data-cat="tops">top</div>
-      <div class="chip" data-cat="bottoms">bottom</div>
-      <div class="chip" data-cat="one-pieces">one-piece</div>
+    <div class="grp" style="margin-top:14px">
+      <label class="lab">Describe the item (locks the details)</label>
+      <textarea id="prodDesc" rows="3" placeholder="e.g. White long-sleeve ribbed shirt. Front text 'THE WORLD AIN'T LOYAL' — THE red, WORLD blue, AIN'T orange, LOYAL green. Small woven brand label on lower front." style="width:100%;background:var(--card2,#1a1a1a);color:var(--txt,#fff);border:1px solid var(--bd,#333);border-radius:10px;padding:10px;font-size:14px;resize:vertical"></textarea>
     </div>
-    <div class="hint">We warp your <b>real</b> print onto the model — logo & text stay exact.</div>
+    <div class="hint">Your photos + words are copied <b>exactly</b> onto a realistic model — print, fabric, patch and all.</div>
   </div>
 
   <!-- STEP 2: MODEL -->
@@ -239,7 +237,7 @@
 // ---------- config ----------
 const BACKEND = localStorage.getItem('threadgen_backend') || 'https://threadgen-server.onrender.com';
 const state = {
-  product:null, category:'auto',
+  products:[], category:'auto',
   modelMode:'generate', uploadedModel:null,
   model:{gender:'man',build:'athletic',ethnicity:'black',age:'young adult'},
   savedModel: JSON.parse(localStorage.getItem('threadgen_brandmodel')||'null'),
@@ -287,19 +285,37 @@ document.querySelectorAll('[data-pick]').forEach(grp=>{
   });
 });
 
-// ---------- category ----------
-document.querySelectorAll('#catChips .chip').forEach(c=>{
-  c.onclick=()=>{ document.querySelectorAll('#catChips .chip').forEach(x=>x.classList.remove('on'));
+// ---------- category (legacy, FLUX2 engine auto-detects garment) ----------
+const catChips=document.getElementById('catChips');
+if(catChips){ catChips.querySelectorAll('.chip').forEach(c=>{
+  c.onclick=()=>{ catChips.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
     c.classList.add('on'); state.category=c.dataset.cat; };
-});
+}); }
 
-// ---------- product upload ----------
+// ---------- product upload (multi-photo: front/back/detail) ----------
+function renderProdThumbs(){
+  $('prodThumb').innerHTML = state.products.map((f,i)=>
+    `<div style="position:relative;display:inline-block">
+       <img class="thumb" src="${fileToThumb(f)}">
+       <span data-rm="${i}" style="position:absolute;top:-6px;right:-6px;background:#c00;color:#fff;border-radius:50%;width:20px;height:20px;line-height:20px;text-align:center;font-size:13px;cursor:pointer">×</span>
+     </div>`).join('');
+  $('prodThumb').querySelectorAll('[data-rm]').forEach(x=>{
+    x.onclick=()=>{ state.products.splice(+x.dataset.rm,1); renderProdThumbs(); updateProdLabel(); };
+  });
+}
+function updateProdLabel(){
+  const n=state.products.length;
+  if(n){ $('prodUp').classList.add('has');
+    $('prodUp').innerHTML=`✅ ${n} photo${n>1?'s':''} added — tap to add more (up to 4)`; }
+  else { $('prodUp').classList.remove('has');
+    $('prodUp').innerHTML='📦 Tap to add photos of your item<br><small style="color:var(--muted)">add up to 4 — front, back, sleeve, close-up of the print/patch. More angles = more accurate.</small>'; }
+}
 $('prodUp').onclick=()=>$('prodFile').click();
 $('prodFile').onchange=e=>{
-  const f=e.target.files[0]; if(!f) return;
-  state.product=f;
-  $('prodUp').classList.add('has'); $('prodUp').innerHTML='✅ Product loaded — tap to change';
-  $('prodThumb').innerHTML=`<img class="thumb" src="${fileToThumb(f)}">`;
+  const fs=[...e.target.files]; if(!fs.length) return;
+  for(const f of fs){ if(state.products.length<4) state.products.push(f); }
+  e.target.value='';
+  renderProdThumbs(); updateProdLabel();
 };
 
 // ---------- model mode toggle (generate vs upload your own) ----------
@@ -361,6 +377,7 @@ $('saveModelBtn').onclick=()=>{
 function options(){
   return { model:{...state.model, ...(state.savedModel?{seed:state.savedModel.seed}:{})},
     scene:state.scene, styles:[...state.styles], category:state.category,
+    productDesc:($('prodDesc')?$('prodDesc').value.trim():''),
     pose:$('poseBox').value.trim(), campaignVision:$('campBox')?$('campBox').value.trim():'' };
 }
 
@@ -421,18 +438,22 @@ galRender();
 
 // ---------- TEST PHOTO ----------
 $('testBtn').onclick=async ()=>{
-  if(!state.product){ alert('Upload your product photo first (Step 1).'); return; }
+  if(!state.products.length){ alert('Add at least one product photo first (Step 1).'); return; }
   const area=$('testArea');
   area.innerHTML='<div class="spin"><div class="loader"></div>Generating your test shot… (~40s, first run may wake the server)</div>';
   $('testBtn').disabled=true;
   try{
     const fd=new FormData();
-    fd.append('product',state.product);
-    // Model priority: uploaded-this-session > saved brand face > generated from picker
+    state.products.forEach((f,i)=>fd.append('product', f, `product_${i}.png`));
+    // Model priority: uploaded-this-session > saved brand face > JUST-PREVIEWED model > picker.
+    // Previously a previewed-but-not-saved model was silently dropped, so the test shot
+    // generated a DIFFERENT random person than the one you just previewed (Don's mismatch bug).
     if(state.modelMode==='upload' && state.uploadedModel){
       fd.append('modelImg', state.uploadedModel, 'model.png');
     } else if(state.savedModel&&state.savedModel.image){
       fd.append('modelImg', await urlToBlob(state.savedModel.image),'model.png');
+    } else if(state._previewModel&&state._previewModel.image){
+      fd.append('modelImg', await urlToBlob(state._previewModel.image),'model.png');
     }
     fd.append('options',JSON.stringify(options()));
     const r=await fetch(BACKEND+'/api/test-photo',{method:'POST',body:fd});
@@ -462,7 +483,7 @@ document.addEventListener('click',async ev=>{
   $('campBtn').disabled=true;
   try{
     const fd=new FormData();
-    fd.append('product',state.product);
+    state.products.forEach((f,i)=>fd.append('product', f, `product_${i}.png`));
     fd.append('approved',state.approvedBlob,'approved.png');
     fd.append('options',JSON.stringify(options()));
     const r=await fetch(BACKEND+'/api/campaign',{method:'POST',body:fd});
