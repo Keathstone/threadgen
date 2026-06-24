@@ -175,9 +175,20 @@
   </div>
 
   <!-- STEP 3: SCENE -->
-  <h2><span class="step-n">3</span>Scene <span class="pill">background</span></h2>
+  <h2><span class="step-n">3</span>Scene & Pose Reference <span class="pill">optional</span></h2>
   <div class="card">
-    <div class="chips" data-pick="scene" id="sceneChips">
+    <div class="up" id="refUp">🖼️ Tap to add a reference photo<br><small style="color:var(--muted)">a photo with the POSE and/or BACKGROUND you want — the model will copy it</small></div>
+    <input type="file" id="refFile" accept="image/*" class="hidden">
+    <div class="thumbs" id="refThumb"></div>
+    <div class="grp" style="margin-top:12px">
+      <label class="lab">Copy from the reference</label>
+      <div class="chips" id="refWhat">
+        <div class="chip on" data-w="pose">Pose</div>
+        <div class="chip on" data-w="background">Background</div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:10px">No reference? Pick a quick preset instead:</div>
+    <div class="chips" data-pick="scene" id="sceneChips" style="margin-top:8px">
       <div class="chip on" data-v="">None / Studio</div>
       <div class="chip" data-v="street">Street</div>
       <div class="chip" data-v="studio">Studio</div>
@@ -241,7 +252,8 @@ const state = {
   modelMode:'generate', uploadedModel:null,
   model:{gender:'man',build:'athletic',ethnicity:'black',age:'young adult'},
   savedModel: JSON.parse(localStorage.getItem('threadgen_brandmodel')||'null'),
-  scene:'', styles:new Set(), approvedBlob:null
+  scene:'', styles:new Set(), approvedBlob:null,
+  sceneRef:null, refWhat:new Set(['pose','background'])
 };
 const $ = id => document.getElementById(id);
 const fileToThumb = f => URL.createObjectURL(f);
@@ -318,6 +330,27 @@ $('prodFile').onchange=e=>{
   renderProdThumbs(); updateProdLabel();
 };
 
+// ---------- scene & pose reference upload (Step 3) ----------
+$('refUp').onclick=()=>$('refFile').click();
+$('refFile').onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  state.sceneRef=f; e.target.value='';
+  $('refUp').classList.add('has');
+  $('refUp').innerHTML='✅ Reference added — tap to change';
+  $('refThumb').innerHTML=`<div style="position:relative;display:inline-block">
+      <img class="thumb" src="${fileToThumb(f)}">
+      <span id="refRm" style="position:absolute;top:-6px;right:-6px;background:#c00;color:#fff;border-radius:50%;width:20px;height:20px;line-height:20px;text-align:center;font-size:13px;cursor:pointer">×</span>
+    </div>`;
+  $('refRm').onclick=ev=>{ ev.stopPropagation(); state.sceneRef=null; $('refThumb').innerHTML='';
+    $('refUp').classList.remove('has');
+    $('refUp').innerHTML='🖼️ Tap to add a reference photo<br><small style="color:var(--muted)">a photo with the POSE and/or BACKGROUND you want — the model will copy it</small>'; };
+};
+document.querySelectorAll('#refWhat .chip').forEach(c=>{
+  c.onclick=()=>{ const w=c.dataset.w;
+    if(state.refWhat.has(w)){ state.refWhat.delete(w); c.classList.remove('on'); }
+    else { state.refWhat.add(w); c.classList.add('on'); } };
+});
+
 // ---------- model mode toggle (generate vs upload your own) ----------
 document.querySelectorAll('#modeToggle .chip').forEach(c=>{
   c.onclick=()=>{
@@ -378,6 +411,7 @@ function options(){
   return { model:{...state.model, ...(state.savedModel?{seed:state.savedModel.seed}:{})},
     scene:state.scene, styles:[...state.styles], category:state.category,
     productDesc:($('prodDesc')?$('prodDesc').value.trim():''),
+    refWhat:[...state.refWhat],
     pose:$('poseBox').value.trim(), campaignVision:$('campBox')?$('campBox').value.trim():'' };
 }
 
@@ -445,6 +479,7 @@ $('testBtn').onclick=async ()=>{
   try{
     const fd=new FormData();
     state.products.forEach((f,i)=>fd.append('product', f, `product_${i}.png`));
+    if(state.sceneRef) fd.append('sceneRef', state.sceneRef, 'sceneref.png');
     // Model priority: uploaded-this-session > saved brand face > JUST-PREVIEWED model > picker.
     // Previously a previewed-but-not-saved model was silently dropped, so the test shot
     // generated a DIFFERENT random person than the one you just previewed (Don's mismatch bug).
@@ -484,6 +519,7 @@ document.addEventListener('click',async ev=>{
   try{
     const fd=new FormData();
     state.products.forEach((f,i)=>fd.append('product', f, `product_${i}.png`));
+    if(state.sceneRef) fd.append('sceneRef', state.sceneRef, 'sceneref.png');
     fd.append('approved',state.approvedBlob,'approved.png');
     fd.append('options',JSON.stringify(options()));
     const r=await fetch(BACKEND+'/api/campaign',{method:'POST',body:fd});
