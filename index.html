@@ -98,6 +98,19 @@
 
 <div class="wrap">
 
+  <!-- SAVED LOOKS (whole-look presets: model + scene + style + description together) -->
+  <div class="card" id="looksCard" style="margin-bottom:6px">
+    <label class="lab" style="display:block;margin-bottom:8px">⭐ Saved Looks <span style="color:var(--muted);font-weight:400;font-size:12px">— reload a winning setup in one tap</span></label>
+    <div class="row" style="gap:8px">
+      <select id="lookPick" style="flex:1;background:var(--card2,#1a1a1a);color:var(--txt,#fff);border:1px solid var(--bd,#333);border-radius:10px;padding:10px;font-size:14px">
+        <option value="">Load a saved look…</option>
+      </select>
+      <button class="btn ok sm" id="saveLookBtn" style="width:auto;margin:0;padding:10px 14px;white-space:nowrap">💾 Save Look</button>
+      <button class="btn ghost sm hidden" id="delLookBtn" style="width:auto;margin:0;padding:10px 14px;white-space:nowrap;color:#f87171;border-color:#f87171">🗑️</button>
+    </div>
+    <div class="hint" id="lookHint" style="margin-top:8px">Saves your model, scene, styles, custom prompt + item description as one reusable look. (Photos aren't saved — re-add those.)</div>
+  </div>
+
   <!-- STEP 1: PRODUCT -->
   <h2><span class="step-n">1</span>Product Photos</h2>
   <div class="card">
@@ -107,8 +120,15 @@
     <div class="grp" style="margin-top:14px">
       <label class="lab">Describe the item (locks the details)</label>
       <textarea id="prodDesc" rows="3" placeholder="e.g. White long-sleeve ribbed shirt. Front text 'THE WORLD AIN'T LOYAL' — THE red, WORLD blue, AIN'T orange, LOYAL green. Small woven brand label on lower front." style="width:100%;background:var(--card2,#1a1a1a);color:var(--txt,#fff);border:1px solid var(--bd,#333);border-radius:10px;padding:10px;font-size:14px;resize:vertical"></textarea>
+      <div class="row" style="margin-top:10px;gap:8px">
+        <select id="garmentPick" style="flex:1;background:var(--card2,#1a1a1a);color:var(--txt,#fff);border:1px solid var(--bd,#333);border-radius:10px;padding:10px;font-size:14px">
+          <option value="">👕 Saved items — load a description…</option>
+        </select>
+        <button class="btn ok sm" id="saveGarmentBtn" style="width:auto;margin:0;padding:10px 14px;white-space:nowrap">💾 Save</button>
+        <button class="btn ghost sm hidden" id="delGarmentBtn" style="width:auto;margin:0;padding:10px 14px;white-space:nowrap;color:#f87171;border-color:#f87171">🗑️</button>
+      </div>
     </div>
-    <div class="hint">Your photos + words are copied <b>exactly</b> onto a realistic model — print, fabric, patch and all.</div>
+    <div class="hint">Your photos + words are copied <b>exactly</b> onto a realistic model — print, fabric, patch and all. Descriptions auto-save so you don't retype them.</div>
   </div>
 
   <!-- STEP 2: MODEL -->
@@ -361,6 +381,107 @@ if($('delPromptBtn')) $('delPromptBtn').onclick=()=>{
   loadedSavedIdx=null; showDelBtn(false);
   $('promptGalHint').textContent='🗑️ Deleted "'+p.name+'".';
 };
+
+// ---------- SAVED GARMENTS (Section 1): auto-save + reuse item descriptions ----------
+const GARMENT_KEY='threadgen_garments';
+function loadGarments(){ try{ return JSON.parse(localStorage.getItem(GARMENT_KEY)||'[]'); }catch{ return []; } }
+function saveGarments(a){ try{ localStorage.setItem(GARMENT_KEY, JSON.stringify(a)); }catch{} }
+let loadedGarmentIdx=null;
+function buildGarmentPick(){
+  const sel=$('garmentPick'); if(!sel) return;
+  sel.innerHTML='<option value="">👕 Saved items — load a description…</option>';
+  loadGarments().forEach((g,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=g.name; sel.appendChild(o); });
+}
+function autoSaveGarment(text){
+  text=(text||'').trim(); if(text.length<8) return;        // ignore trivial
+  const arr=loadGarments();
+  if(arr.some(g=>g.text===text)) return;                    // already saved (verbatim)
+  const name=text.replace(/\s+/g,' ').slice(0,38)+(text.length>38?'…':'');
+  arr.unshift({name, text, ts:Date.now()});
+  while(arr.length>20) arr.pop();                           // cap 20
+  saveGarments(arr); buildGarmentPick();
+}
+if($('garmentPick')) $('garmentPick').onchange=function(){
+  const v=this.value; this.value='';
+  if(v===''){ loadedGarmentIdx=null; $('delGarmentBtn').classList.add('hidden'); return; }
+  const g=loadGarments()[+v]; if(g){ $('prodDesc').value=g.text; loadedGarmentIdx=+v; $('delGarmentBtn').classList.remove('hidden'); }
+};
+if($('saveGarmentBtn')) $('saveGarmentBtn').onclick=()=>{
+  const t=($('prodDesc')?$('prodDesc').value.trim():''); if(!t){ alert('Type an item description first.'); return; }
+  const name=prompt('Name this item:', t.slice(0,30)); if(!name) return;
+  const arr=loadGarments(); arr.unshift({name:name.trim(), text:t, ts:Date.now()});
+  saveGarments(arr); buildGarmentPick();
+};
+if($('delGarmentBtn')) $('delGarmentBtn').onclick=()=>{
+  if(loadedGarmentIdx===null) return;
+  const arr=loadGarments(); const g=arr[loadedGarmentIdx]; if(!g) return;
+  if(!confirm('Delete saved item "'+g.name+'"?')) return;
+  arr.splice(loadedGarmentIdx,1); saveGarments(arr); buildGarmentPick();
+  loadedGarmentIdx=null; $('delGarmentBtn').classList.add('hidden');
+};
+buildGarmentPick();
+
+// ---------- SAVED LOOKS: whole-setup preset (model+scene+styles+style prompt+description) ----------
+const LOOK_KEY='threadgen_looks';
+function loadLooks(){ try{ return JSON.parse(localStorage.getItem(LOOK_KEY)||'[]'); }catch{ return []; } }
+function saveLooks(a){ try{ localStorage.setItem(LOOK_KEY, JSON.stringify(a)); }catch{} }
+let loadedLookIdx=null;
+function buildLookPick(){
+  const sel=$('lookPick'); if(!sel) return;
+  sel.innerHTML='<option value="">Load a saved look…</option>';
+  loadLooks().forEach((l,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=l.name; sel.appendChild(o); });
+}
+function captureLook(){
+  return {
+    model:{...state.model}, scene:state.scene, styles:[...state.styles],
+    refWhat:[...state.refWhat],
+    styleBox:($('styleBox')?$('styleBox').value:''),
+    prodDesc:($('prodDesc')?$('prodDesc').value:''),
+    pose:($('poseBox')?$('poseBox').value:''),
+  };
+}
+function applyLook(l){
+  if(!l) return;
+  // model picker
+  if(l.model){ state.model={...state.model,...l.model};
+    document.querySelectorAll('[data-pick]').forEach(grp=>{ const k=grp.dataset.pick; if(k==='scene')return;
+      grp.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', state.model[k]===c.dataset.v)); }); }
+  // scene
+  state.scene=l.scene||'';
+  document.querySelectorAll('[data-pick="scene"] .chip').forEach(c=>c.classList.toggle('on', c.dataset.v===state.scene));
+  // styles (multi)
+  state.styles=new Set(l.styles||[]);
+  document.querySelectorAll('#styleChips .chip').forEach(c=>c.classList.toggle('on', state.styles.has(c.dataset.s)));
+  // refWhat
+  if(l.refWhat){ state.refWhat=new Set(l.refWhat);
+    document.querySelectorAll('#refWhat .chip').forEach(c=>c.classList.toggle('on', state.refWhat.has(c.dataset.w))); }
+  // text boxes
+  if($('styleBox')) $('styleBox').value=l.styleBox||'';
+  if($('prodDesc')) $('prodDesc').value=l.prodDesc||'';
+  if($('poseBox'))  $('poseBox').value=l.pose||'';
+}
+if($('lookPick')) $('lookPick').onchange=function(){
+  const v=this.value; this.value='';
+  if(v===''){ loadedLookIdx=null; $('delLookBtn').classList.add('hidden'); return; }
+  const l=loadLooks()[+v]; if(l){ applyLook(l); loadedLookIdx=+v; $('delLookBtn').classList.remove('hidden');
+    $('lookHint').textContent='✅ Loaded "'+l.name+'". Re-add your product photos and generate.'; }
+};
+if($('saveLookBtn')) $('saveLookBtn').onclick=()=>{
+  const name=prompt('Name this look (e.g. "Winter drop — street"):',''); if(!name) return;
+  const arr=loadLooks(); arr.unshift({name:name.trim(), ...captureLook(), ts:Date.now()});
+  while(arr.length>20) arr.pop();
+  saveLooks(arr); buildLookPick();
+  $('lookHint').textContent='✅ Saved look "'+name.trim()+'".';
+};
+if($('delLookBtn')) $('delLookBtn').onclick=()=>{
+  if(loadedLookIdx===null) return;
+  const arr=loadLooks(); const l=arr[loadedLookIdx]; if(!l) return;
+  if(!confirm('Delete saved look "'+l.name+'"?')) return;
+  arr.splice(loadedLookIdx,1); saveLooks(arr); buildLookPick();
+  loadedLookIdx=null; $('delLookBtn').classList.add('hidden');
+  $('lookHint').textContent='🗑️ Deleted "'+l.name+'".';
+};
+buildLookPick();
 
 // ---------- single-select chip groups (model picker / scene) ----------
 document.querySelectorAll('[data-pick]').forEach(grp=>{
@@ -661,6 +782,7 @@ $('testBtn').onclick=async ()=>{
     fd.append('options',JSON.stringify(options()));
     const r=await fetch(BACKEND+'/api/test-photo',{method:'POST',body:fd});
     const j=await r.json(); if(!j.success) throw new Error(j.error||'generation failed');
+    autoSaveGarment($('prodDesc')?$('prodDesc').value:''); // auto-save the item description on a successful shot
     state.approvedBlob=await urlToBlob(j.image);
     galAdd(j.image); // auto-save to gallery
     area.innerHTML=`<div class="result"><img src="${j.image}" id="testImg"></div>
