@@ -1,6 +1,6 @@
 {
-  "name": "ThreadGen — AI Clothing Campaigns",
-  "short_name": "ThreadGen",
+  "name": "Dressd — AI Clothing Campaigns",
+  "short_name": "Dressd",
   "description": "Turn a clothing mockup into pro AI marketing campaigns. No photoshoot needed.",
   "start_url": "./index.html",
   "scope": "./",

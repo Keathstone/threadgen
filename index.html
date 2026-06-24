@@ -6,9 +6,9 @@
 <meta name="theme-color" content="#0a0a0c">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="ThreadGen">
+<meta name="apple-mobile-web-app-title" content="Dressd">
 <link rel="manifest" href="manifest.json">
-<title>ThreadGen — AI Clothing Campaigns</title>
+<title>Dressd — AI Clothing Campaigns</title>
 <style>
   :root{
     --bg:#0a0a0c; --bg2:#121217; --card:#16161d; --elev:#1f1f29;
@@ -91,7 +91,7 @@
 </head>
 <body>
 <header>
-  <div class="logo">THREAD<span>GEN</span></div>
+  <div class="logo">DRESS<span>D</span></div>
   <span class="tag" id="tagline">AI campaign studio</span>
   <div class="dot" id="status"></div>
 </header>
@@ -741,7 +741,7 @@ $('lbSave').onclick=async ev=>{
     if(!blob) throw new Error('no image');
     const file=new File([blob],`threadgen_${Date.now()}.png`,{type:blob.type||'image/png'});
     if(navigator.canShare && navigator.canShare({files:[file]})){
-      await navigator.share({files:[file], title:'ThreadGen photo'});
+      await navigator.share({files:[file], title:'Dressd photo'});
       btn.textContent=orig; return;
     }
     const u=URL.createObjectURL(blob);
