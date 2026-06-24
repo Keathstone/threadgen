@@ -569,11 +569,28 @@ function galRender(){
   const arr=galLoad(), grid=$('galGrid');
   $('galCount').textContent=`${arr.length} / ${GAL_MAX}`;
   if(!arr.length){ grid.innerHTML='<div class="galempty">No photos yet — generate a shot and it shows up here.</div>'; return; }
-  // newest first. Tap a thumb -> opens full-res in the in-app lightbox.
+  // newest first. Tap a thumb -> opens full-res in the in-app lightbox. X badge -> delete one.
   grid.innerHTML=arr.slice().reverse().map((g,i)=>
-    `<a href="#" data-id="${g.id||''}" data-full="${g.u||g.t}"><img src="${g.t}" loading="lazy"></a>`).join('');
+    `<div class="galcell" style="position:relative;display:inline-block">
+       <a href="#" data-id="${g.id||''}" data-full="${g.u||g.t}"><img src="${g.t}" loading="lazy"></a>
+       <span class="galdel" data-del="${g.id||''}" data-idx="${arr.length-1-i}" title="Delete photo"
+         style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.65);color:#fff;border-radius:50%;width:22px;height:22px;line-height:22px;text-align:center;font-size:14px;cursor:pointer;font-weight:700">×</span>
+     </div>`).join('');
   grid.querySelectorAll('a[data-full]').forEach(a=>{
     a.onclick=ev=>{ ev.preventDefault(); openLightbox(a.dataset.full, a.dataset.id); };
+  });
+  grid.querySelectorAll('.galdel').forEach(x=>{
+    x.onclick=async ev=>{ ev.preventDefault(); ev.stopPropagation();
+      if(!confirm('Delete this photo from the gallery?')) return;
+      const id=x.dataset.del, idx=+x.dataset.idx;
+      const cur=galLoad();
+      // prefer delete-by-id (stable); fall back to index
+      let pos = id ? cur.findIndex(g=>g.id===id) : idx;
+      if(pos<0) pos=idx;
+      const removed=cur.splice(pos,1)[0];
+      if(removed && removed.id) idbDel(removed.id);
+      galSave(cur); galRender();
+    };
   });
 }
 // ---------- lightbox (full-res viewer) ----------
