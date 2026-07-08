@@ -288,6 +288,12 @@
 <script>
 // ---------- config ----------
 const BACKEND = localStorage.getItem('threadgen_backend') || 'https://threadgen-server.onrender.com';
+// Shared app key sent on every paid API call so a stranger who finds this public URL can't
+// spam our FAL-billed endpoints. This is a soft lock (visible in page source, not real auth) —
+// it stops casual bots/scrapers, not a determined attacker. Must match THREADGEN_APP_KEY on the
+// Render backend exactly, or every generation call will 401.
+const APP_KEY = 'dressd-arl-2026';
+function authHeaders(extra = {}) { return { 'X-App-Key': APP_KEY, ...extra }; }
 const state = {
   products:[], category:'auto',
   modelMode:'generate', uploadedModel:null,
@@ -589,7 +595,7 @@ $('genModelBtn').onclick=async ()=>{
   area.innerHTML='<div class="spin"><div class="loader"></div>Generating model…</div>';
   $('genModelBtn').disabled=true;
   try{
-    const r=await fetch(BACKEND+'/api/brand-model',{method:'POST',headers:{'Content-Type':'application/json'},
+    const r=await fetch(BACKEND+'/api/brand-model',{method:'POST',headers:authHeaders({'Content-Type':'application/json'}),
       body:JSON.stringify({model:{...state.model, seed: Math.floor(Math.random()*1e6)}})});
     const j=await r.json(); if(!j.success) throw new Error(j.error||'failed');
     state._previewModel={image:j.image, seed:j.seed};
@@ -780,7 +786,7 @@ $('testBtn').onclick=async ()=>{
       fd.append('modelImg', await urlToBlob(state._previewModel.image),'model.png');
     }
     fd.append('options',JSON.stringify(options()));
-    const r=await fetch(BACKEND+'/api/test-photo',{method:'POST',body:fd});
+    const r=await fetch(BACKEND+'/api/test-photo',{method:'POST',headers:authHeaders(),body:fd});
     const j=await r.json(); if(!j.success) throw new Error(j.error||'generation failed');
     autoSaveGarment($('prodDesc')?$('prodDesc').value:''); // auto-save the item description on a successful shot
     state.approvedBlob=await urlToBlob(j.image);
@@ -812,7 +818,7 @@ document.addEventListener('click',async ev=>{
     if(state.sceneRef) fd.append('sceneRef', state.sceneRef, 'sceneref.png');
     fd.append('approved',state.approvedBlob,'approved.png');
     fd.append('options',JSON.stringify(options()));
-    const r=await fetch(BACKEND+'/api/campaign',{method:'POST',body:fd});
+    const r=await fetch(BACKEND+'/api/campaign',{method:'POST',headers:authHeaders(),body:fd});
     const j=await r.json(); if(!j.success) throw new Error(j.error||'campaign failed');
     for(const u of j.images){ await galAdd(u); } // auto-save all 5 to gallery
     area.innerHTML='<div class="grid">'+j.images.map((u,i)=>`
