@@ -11,9 +11,9 @@
 <title>Dressd — AI Clothing Campaigns</title>
 <style>
   :root{
-    --bg:#0a0a0c; --bg2:#121217; --card:#16161d; --elev:#1f1f29;
-    --line:#2a2a36; --txt:#ececf1; --txt2:#9a9aae; --muted:#5f5f72;
-    --acc:#e7402b; --acc2:#ff6a4d; --ok:#36d399; --amber:#f5b042;
+    --bg:#0d1117; --bg2:#161b22; --card:#161b22; --elev:#1c2333;
+    --line:#30363d; --txt:#e6edf3; --txt2:#8b949e; --muted:#6e7681;
+    --acc:#f0b429; --acc2:#ffb347; --ok:#3fb950; --amber:#ffb347;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);
@@ -31,8 +31,8 @@
   h2{font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--txt2);
     margin:26px 0 10px;font-weight:700}
   .step-n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;
-    border-radius:50%;background:var(--acc);color:#fff;font-size:11px;font-weight:800;margin-right:8px}
-  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+    border-radius:50%;background:var(--acc);color:#1a1a1a;font-size:11px;font-weight:800;margin-right:8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:14px}
   .up{border:2px dashed var(--line);border-radius:14px;padding:26px 16px;text-align:center;
     color:var(--txt2);cursor:pointer;transition:.15s;font-size:14px}
   .up:active{border-color:var(--acc);background:var(--elev)}
@@ -42,7 +42,7 @@
   .chips{display:flex;flex-wrap:wrap;gap:8px}
   .chip{padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--bg2);
     color:var(--txt2);font-size:13px;font-weight:600;cursor:pointer;transition:.12s;user-select:none}
-  .chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
+  .chip.on{background:var(--acc);border-color:var(--acc);color:#1a1a1a;font-weight:700}
   label.lab{display:block;font-size:13px;color:var(--txt2);margin:0 0 7px;font-weight:600}
   textarea,input[type=text]{width:100%;background:var(--bg2);border:1px solid var(--line);
     color:var(--txt);border-radius:12px;padding:12px;font-size:15px;font-family:inherit;resize:vertical}
@@ -52,7 +52,7 @@
   .grp:last-child{margin-bottom:0}
   .btn{width:100%;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:800;
     cursor:pointer;transition:.15s;margin-top:6px}
-  .btn.primary{background:var(--acc);color:#fff}
+  .btn.primary{background:var(--acc);color:#1a1a1a}
   .btn.primary:active{background:var(--acc2)}
   .btn.ghost{background:var(--elev);color:var(--txt)}
   .btn.ok{background:var(--ok);color:#04210f}
@@ -69,8 +69,8 @@
     border-radius:50%;animation:sp 0.8s linear infinite}
   @keyframes sp{to{transform:rotate(360deg)}}
   .hidden{display:none}
-  .gate{background:linear-gradient(135deg,#1a1320,#16161d);border:1px solid var(--acc);
-    border-radius:16px;padding:16px;margin-top:14px}
+  .gate{background:var(--elev);border:1px solid var(--acc);
+    border-radius:10px;padding:16px;margin-top:14px}
   .err{background:#2a1414;border:1px solid #5a2020;color:#ff9b8a;border-radius:12px;
     padding:12px;font-size:13px;margin-top:12px}
   .pill{font-size:11px;background:var(--elev);color:var(--txt2);padding:3px 9px;border-radius:999px;margin-left:8px}
