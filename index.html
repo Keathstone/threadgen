@@ -243,6 +243,18 @@
     <div class="hint">Leave blank for a natural streetwear pose.</div>
   </div>
 
+  <!-- MODE -->
+  <h2><span class="step-n">⚙</span>Output Mode <span class="pill">controls cost</span></h2>
+  <div class="card">
+    <div class="chips" id="modeChips">
+      <div class="chip on" data-mode="standard">Standard<br><small>~$0.12–$0.25</small></div>
+      <div class="chip" data-mode="premium">Premium Realism<br><small>~$0.25–$0.55</small></div>
+      <div class="chip" data-mode="logo">Logo/Text Lock<br><small>~$0.22–$0.35</small></div>
+      <div class="chip" data-mode="product">Product Shot<br><small>~$0.03–$0.10</small></div>
+    </div>
+    <div class="hint" id="modeHint" style="margin-top:10px">Standard is the default. Premium Realism costs more but pushes skin/photo realism. Logo/Text Lock is for shirts where words or logos matter. Product Shot makes e-commerce/lifestyle product photos without a model.</div>
+  </div>
+
   <!-- TEST -->
   <h2><span class="step-n">6</span>Test Shot</h2>
   <div class="card">
@@ -300,6 +312,7 @@ const state = {
   model:{gender:'man',build:'athletic',ethnicity:'black',age:'young adult'},
   savedModel: JSON.parse(localStorage.getItem('threadgen_brandmodel')||'null'),
   scene:'', styles:new Set(), approvedBlob:null,
+  outputMode:'standard',
   sceneRef:null, refWhat:new Set(['pose','background'])
 };
 const $ = id => document.getElementById(id);
@@ -611,10 +624,29 @@ $('saveModelBtn').onclick=()=>{
   renderSavedModel(); $('modelArea').innerHTML=''; $('saveModelBtn').disabled=true;
 };
 
+// ---------- output mode ----------
+const MODE_COPY={
+  standard:'Standard: best balance. Uses FLUX.2 Pro + gentle upscale. Estimated ~$0.12–$0.25 per finished image.',
+  premium:'Premium Realism: highest realism mode. Uses Nano Banana Pro + gentle upscale. Estimated ~$0.25–$0.55 per finished image.',
+  logo:'Logo/Text Lock: extra typography pass for shirts with important words/logos. Estimated ~$0.22–$0.35 per finished image.',
+  product:'Product Shot: product-only lifestyle/e-commerce photo, no model needed. Estimated ~$0.03–$0.10 per image.'
+};
+function renderMode(){
+  document.querySelectorAll('#modeChips .chip').forEach(c=>c.classList.toggle('on', c.dataset.mode===state.outputMode));
+  if($('modeHint')) $('modeHint').textContent=MODE_COPY[state.outputMode]||MODE_COPY.standard;
+  if($('testBtn')) $('testBtn').textContent = state.outputMode==='product' ? '📦 Generate Product Shot' : '⚡ Generate Test Photo';
+  if($('campBtn')) $('campBtn').textContent = state.outputMode==='product' ? '📦 Generate 5 Product Shots' : '🎬 Generate 5-Photo Campaign';
+}
+document.querySelectorAll('#modeChips .chip').forEach(c=>{
+  c.onclick=()=>{ state.outputMode=c.dataset.mode; renderMode(); };
+});
+renderMode();
+
 // ---------- options ----------
 function options(){
   return { model:{...state.model, ...(state.savedModel?{seed:state.savedModel.seed}:{})},
     scene:state.scene, styles:[...state.styles], category:state.category,
+    outputMode:state.outputMode,
     customStyle:($('styleBox')?$('styleBox').value.trim():''),
     productDesc:($('prodDesc')?$('prodDesc').value.trim():''),
     refWhat:[...state.refWhat],
@@ -769,7 +801,8 @@ galRender();
 $('testBtn').onclick=async ()=>{
   if(!state.products.length){ alert('Add at least one product photo first (Step 1).'); return; }
   const area=$('testArea');
-  area.innerHTML='<div class="spin"><div class="loader"></div>Generating your test shot… (~40s, first run may wake the server)</div>';
+  const modeText=state.outputMode==='premium'?'Premium realism pass… (~60-90s)':state.outputMode==='logo'?'Logo/text lock pass… (~60-90s)':state.outputMode==='product'?'Building product shot… (~30-60s)':'Generating your test shot… (~40s, first run may wake the server)';
+  area.innerHTML=`<div class="spin"><div class="loader"></div>${modeText}</div>`;
   $('testBtn').disabled=true;
   try{
     const fd=new FormData();
@@ -792,6 +825,7 @@ $('testBtn').onclick=async ()=>{
     state.approvedBlob=await urlToBlob(j.image);
     galAdd(j.image); // auto-save to gallery
     area.innerHTML=`<div class="result"><img src="${j.image}" id="testImg"></div>
+      <div class="hint" style="text-align:center;margin-top:8px">Mode: <b>${j.mode||state.outputMode}</b> • est. cost ${j.estimated_cost||'see mode label'}</div>
       <div class="crops" id="testCrops"></div>
       <div class="gate"><div style="font-weight:700;margin-bottom:10px">Happy with this look?</div>
         <div class="row"><button class="btn ghost" id="rejectBtn">↺ Try Again</button>
@@ -810,7 +844,8 @@ document.addEventListener('click',async ev=>{
   if(ev.target.id!=='campBtn') return;
   if(!state.approvedBlob){ alert('Approve a test photo first.'); return; }
   const area=$('campArea');
-  area.innerHTML='<div class="spin"><div class="loader"></div>Shooting your 5-photo campaign… (~3 min)</div>';
+  const campText=state.outputMode==='product'?'Shooting 5 product photos… (~2 min)':state.outputMode==='premium'?'Shooting premium-realism campaign… (~4-6 min)':state.outputMode==='logo'?'Shooting logo/text-lock campaign… (~4-6 min)':'Shooting your 5-photo campaign… (~3 min)';
+  area.innerHTML=`<div class="spin"><div class="loader"></div>${campText}</div>`;
   $('campBtn').disabled=true;
   try{
     const fd=new FormData();
@@ -821,7 +856,8 @@ document.addEventListener('click',async ev=>{
     const r=await fetch(BACKEND+'/api/campaign',{method:'POST',headers:authHeaders(),body:fd});
     const j=await r.json(); if(!j.success) throw new Error(j.error||'campaign failed');
     for(const u of j.images){ await galAdd(u); } // auto-save all 5 to gallery
-    area.innerHTML='<div class="grid">'+j.images.map((u,i)=>`
+    area.innerHTML=`<div class="hint" style="text-align:center;margin-bottom:8px">Mode: <b>${j.mode||state.outputMode}</b> • est. cost ${j.estimated_cost||'see mode label'} each</div>`+
+      '<div class="grid">'+j.images.map((u,i)=>`
       <div><img src="${u}"><a class="dl" href="${u}" download="campaign_${i+1}.png" target="_blank">⬇ save</a></div>`).join('')+'</div>';
   }catch(e){ area.innerHTML=`<div class="err">⚠️ ${e.message}</div>`; }
   finally{ $('campBtn').disabled=false; }
